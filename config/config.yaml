@@ -15,14 +15,47 @@ data_sources:
     stock_files:
       - "StockEtablissement_utf8.zip"
       - "StockUniteLegale_utf8.zip"
-    daily_files_pattern: "^sirene_\\d{8}_E_Q\\.csv\\.gz$"
-    description: "Enterprise directory data with daily incremental updates"
+    optional_files:
+      - "StockEtablissementHistorique_utf8.zip"
+      - "StockUniteLegaleHistorique_utf8.zip"
+      - "StockEtablissementLiensSuccession_utf8.zip"
+      - "StockDoublons_utf8.zip"
+    download_historical: false  # Set to true to download historical data files
+    download_optional: false    # Set to true to download succession links and duplicates
+    months_back: 3              # Download files from last N months
+    description: "Enterprise directory data with monthly stock updates (2018-2025)"
     
   insee_contours:
     name: "INSEE Geographic Contours (地理边界数据)"
     base_url: "https://www.data.gouv.fr/fr/datasets/contours-iris-2023/"
-    api_endpoint: "https://www.data.gouv.fr/api/1/datasets/contours-iris-2023/"
-    description: "IRIS contours for geographic analysis"
+    api_endpoint: "https://www.data.gouv.fr/api/1/datasets/"
+    ign_base_url: "https://data.geopf.fr/telechargement/download/"
+    description: "Geographic boundaries for IRIS, communes, départements, and régions"
+    
+    # Data types to collect
+    data_types:
+      - "iris"          # Statistical zones (~16,100 areas)
+      - "communes"      # Municipalities (~35,000 units)
+      - "departements"  # Departments (101 units)
+      - "regions"       # Regions (18 units)
+    
+    # File formats to download
+    formats:
+      - "shapefile"     # .shp files (GIS standard)
+      - "geojson"       # .geojson files (web-friendly)
+      - "geopackage"    # .gpkg files (modern GIS format)
+    
+    # Data source options
+    download_ign_data: true      # IGN official high-precision data
+    download_datagouv: true      # data.gouv.fr datasets
+    download_geozones: true      # Standardized geographic identifiers
+    
+    # Coordinate system preference
+    preferred_projection: "lambert93"  # lambert93 or wgs84
+    
+    # Year configuration
+    target_year: 2024
+    fallback_years: [2024, 2023, 2022]
     
   plu:
     name: "PLU/PLUi (城市规划数据)"
