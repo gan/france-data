@@ -4,8 +4,10 @@
 data_sources:
   dvf:
     name: "Demandes de Valeurs Foncières (房产交易数据)"
-    base_url: "https://files.data.gouv.fr/etalab/dvf/"
-    description: "Property transaction data from 2014 to present"
+    base_url: "https://files.data.gouv.fr/geo-dvf/latest/csv/"
+    description: "Property transaction data by year (2020-2024)"
+    download_subdirs: false  # Set to true to download communes/departements subdirectories
+    years: null  # null for all available years, or list like [2023, 2024]
     
   sirene:
     name: "SIRENE (企业名录数据)"
