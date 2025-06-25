@@ -7,12 +7,16 @@ This module provides the base functionality that all specific data collectors
 import logging
 import os
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 import json
 
 from config.config_loader import get_config
 from utils.gcs_client import get_gcs_client
+from utils.utils import (
+    setup_logging, download_file_with_retry, upload_to_gcs,
+    NetworkError, StorageError
+)
 
 
 class BaseCollector(ABC):
@@ -46,24 +50,17 @@ class BaseCollector(ABC):
         self.metadata_path = f"metadata/{collector_name}"
         
     def _setup_logging(self) -> logging.Logger:
-        """Setup logging for the collector."""
-        logger = logging.getLogger(f"collector.{self.collector_name}")
-        
-        # Configure based on config
+        """Setup logging for the collector using centralized utility."""
         log_level = self.config.get('logging_config.level', 'INFO')
-        logger.setLevel(getattr(logging, log_level))
+        enable_cloud = self.config.get('logging_config.enable_cloud_logging', True)
+        log_format = self.config.get('logging_config.format', 'json')
         
-        # Add handler if not already present
-        if not logger.handlers:
-            handler = logging.StreamHandler()
-            formatter = logging.Formatter(
-                '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                datefmt='%Y-%m-%d %H:%M:%S'
-            )
-            handler.setFormatter(formatter)
-            logger.addHandler(handler)
-        
-        return logger
+        return setup_logging(
+            f"collector.{self.collector_name}",
+            level=log_level,
+            enable_cloud_logging=enable_cloud,
+            log_format=log_format
+        )
     
     @abstractmethod
     def collect(self) -> Dict[str, Any]:
@@ -88,7 +85,7 @@ class BaseCollector(ABC):
     
     def run(self) -> Dict[str, Any]:
         """Run the complete collection process."""
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         result = {
             'collector': self.collector_name,
             'start_time': start_time.isoformat(),
@@ -124,7 +121,7 @@ class BaseCollector(ABC):
             })
         
         finally:
-            end_time = datetime.utcnow()
+            end_time = datetime.now(timezone.utc)
             result['end_time'] = end_time.isoformat()
             result['duration_seconds'] = (end_time - start_time).total_seconds()
             
@@ -164,7 +161,7 @@ class BaseCollector(ABC):
             )
             
             last_run_time = datetime.fromisoformat(last_run['end_time'])
-            time_since_last_run = datetime.utcnow() - last_run_time
+            time_since_last_run = datetime.now(timezone.utc) - last_run_time
             
             # Simple schedule check (can be enhanced)
             if schedule == 'daily' and time_since_last_run.days < 1:
@@ -189,7 +186,7 @@ class BaseCollector(ABC):
             metadata: Metadata dictionary to save
         """
         # Save timestamped metadata
-        timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
         metadata_file = f"{self.metadata_path}/run_{timestamp}.json"
         
         temp_path = f"/tmp/metadata_{timestamp}.json"
@@ -212,7 +209,7 @@ class BaseCollector(ABC):
         os.remove(temp_path)
     
     def download_file(self, url: str, local_path: str) -> bool:
-        """Download a file with retry logic.
+        """Download a file with retry logic using centralized utility.
         
         Args:
             url: URL to download from
@@ -221,37 +218,20 @@ class BaseCollector(ABC):
         Returns:
             True if successful, False otherwise
         """
-        import requests
-        from tenacity import retry, stop_after_attempt, wait_exponential
-        
-        @retry(
-            stop=stop_after_attempt(self.max_retries),
-            wait=wait_exponential(multiplier=1, min=4, max=self.retry_delay)
-        )
-        def _download():
-            response = requests.get(url, stream=True, timeout=self.timeout)
-            response.raise_for_status()
-            
-            # Create directory if needed
-            os.makedirs(os.path.dirname(local_path), exist_ok=True)
-            
-            # Download in chunks
-            chunk_size = self.config.get('processing_config.chunk_size_bytes', 8192)
-            with open(local_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=chunk_size):
-                    if chunk:
-                        f.write(chunk)
-            
-            return True
-        
         try:
-            return _download()
-        except Exception as e:
+            chunk_size = self.config.get('processing_config.chunk_size_bytes', 8192)
+            return download_file_with_retry(
+                url=url,
+                local_path=local_path,
+                timeout=self.timeout,
+                chunk_size=chunk_size
+            )
+        except (NetworkError, StorageError) as e:
             self.logger.error(f"Failed to download {url}: {e}")
             return False
     
     def upload_to_gcs(self, local_path: str, gcs_path: str) -> bool:
-        """Upload a file to GCS with idempotency check.
+        """Upload a file to GCS with idempotency check using centralized utility.
         
         Args:
             local_path: Local file path
@@ -261,21 +241,13 @@ class BaseCollector(ABC):
             True if uploaded or already exists with same content, False on error
         """
         try:
-            # Check if file already exists and compare
-            if self.config.get('features.enable_file_comparison', True):
-                if self.gcs_client.file_exists(gcs_path):
-                    matches, reason = self.gcs_client.compare_files(gcs_path, local_path)
-                    if matches:
-                        self.logger.info(f"File already exists and matches: {gcs_path}")
-                        return True
-                    else:
-                        self.logger.info(f"File exists but differs ({reason}), uploading: {gcs_path}")
-            
-            # Upload the file
-            self.gcs_client.upload_file(local_path, gcs_path)
-            return True
-            
-        except Exception as e:
+            check_existing = self.config.get('features.enable_file_comparison', True)
+            return upload_to_gcs(
+                local_path=local_path,
+                gcs_path=gcs_path,
+                check_existing=check_existing
+            )
+        except StorageError as e:
             self.logger.error(f"Failed to upload {local_path} to {gcs_path}: {e}")
             return False
     
