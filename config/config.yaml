@@ -1,0 +1,104 @@
+# France Data Collector Configuration
+
+# Data source URLs for different datasets
+data_sources:
+  dvf:
+    name: "Demandes de Valeurs Foncières (房产交易数据)"
+    base_url: "https://files.data.gouv.fr/etalab/dvf/"
+    description: "Property transaction data from 2014 to present"
+    
+  sirene:
+    name: "SIRENE (企业名录数据)"
+    base_url: "https://files.data.gouv.fr/insee-sirene/"
+    stock_files:
+      - "StockEtablissement_utf8.zip"
+      - "StockUniteLegale_utf8.zip"
+    daily_files_pattern: "^sirene_\\d{8}_E_Q\\.csv\\.gz$"
+    description: "Enterprise directory data with daily incremental updates"
+    
+  insee_contours:
+    name: "INSEE Geographic Contours (地理边界数据)"
+    base_url: "https://www.data.gouv.fr/fr/datasets/contours-iris-2023/"
+    api_endpoint: "https://www.data.gouv.fr/api/1/datasets/contours-iris-2023/"
+    description: "IRIS contours for geographic analysis"
+    
+  plu:
+    name: "PLU/PLUi (城市规划数据)"
+    wfs_endpoint: "https://data.geopf.fr/wfs/ows"
+    service_name: "gpu"
+    description: "Urban planning documents via WFS API"
+
+# Google Cloud Storage configuration
+gcs_config:
+  bucket_name: "${GCS_BUCKET_NAME}"  # Will be read from environment variable
+  directory_structure:
+    raw:
+      base_path: "raw"
+      subdirs:
+        - "dvf"
+        - "sirene"
+        - "insee-contours"
+        - "plu"
+    processed:
+      base_path: "processed"
+      subdirs:
+        - "dvf"
+        - "sirene"
+        - "insee-contours"
+        - "plu"
+    logs:
+      base_path: "logs"
+    metadata:
+      base_path: "metadata"
+
+# Processing configuration
+processing_config:
+  batch_size: 1000
+  max_retries: 3
+  retry_delay_seconds: 30
+  timeout_seconds: 300
+  max_concurrent_downloads: 5
+  
+  # File size thresholds (in MB)
+  large_file_threshold_mb: 100
+  chunk_size_bytes: 8192
+  
+  # Update frequencies (for scheduler)
+  update_schedule:
+    dvf: "monthly"  # DVF updates monthly
+    sirene: "daily"  # SIRENE has daily incremental updates
+    insee_contours: "yearly"  # Geographic contours update yearly
+    plu: "weekly"  # PLU data can change frequently
+
+# Logging configuration
+logging_config:
+  level: "INFO"
+  format: "json"
+  enable_cloud_logging: true
+  log_to_file: true
+  max_file_size_mb: 100
+  backup_count: 5
+
+# Cloud Functions configuration
+cloud_functions:
+  runtime: "python311"
+  memory_mb: 512
+  timeout_seconds: 540  # 9 minutes max
+  max_instances: 100
+  min_instances: 0
+  
+# Monitoring and alerting
+monitoring:
+  enable_alerts: true
+  alert_channels:
+    - "email"
+    - "slack"
+  failure_threshold: 3
+  
+# Feature flags
+features:
+  enable_idempotency_check: true
+  enable_file_comparison: true
+  enable_incremental_updates: true
+  enable_data_validation: true
+  enable_compression: true
