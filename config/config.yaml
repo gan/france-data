@@ -169,6 +169,7 @@ cloud_functions:
   timeout_seconds: 540  # 9 minutes max
   max_instances: 100
   min_instances: 0
+  region: "${GCP_LOCATION:-europe-west9}"  # Deploy in Europe for data compliance
   
 # Monitoring and alerting
 monitoring:
@@ -185,3 +186,45 @@ features:
   enable_incremental_updates: true
   enable_data_validation: true
   enable_compression: true
+
+# Scheduler configuration
+scheduler:
+  # Use Cloud Tasks for async execution (if false, uses HTTP calls)
+  use_cloud_tasks: false
+  
+  # Cloud Tasks queue name
+  queue_name: "data-collectors"
+  
+  # Service account for authentication
+  service_account_email: "${SERVICE_ACCOUNT_EMAIL}"
+  
+  # Use Secret Manager for auth tokens
+  use_secret_manager: false
+  
+  # Maximum concurrent collectors (for HTTP mode)
+  max_concurrent_collectors: 4
+  
+  # Base URL for Cloud Functions (if not using individual URLs)
+  base_function_url: "${CLOUD_FUNCTIONS_BASE_URL}"
+  
+  # Individual collector configurations
+  collectors:
+    dvf:
+      enabled: true
+      schedule: "0 2 * * *"  # Daily at 2 AM
+    sirene:
+      enabled: true
+      schedule: "0 3 * * *"  # Daily at 3 AM
+    insee_contours:
+      enabled: true
+      schedule: "0 4 * * 0"  # Weekly on Sunday at 4 AM
+    plu:
+      enabled: true
+      schedule: "0 5 * * 0"  # Weekly on Sunday at 5 AM
+  
+  # Collector URLs (optional, can be auto-generated)
+  collector_urls:
+    dvf: "${DVF_FUNCTION_URL}"
+    sirene: "${SIRENE_FUNCTION_URL}"
+    insee_contours: "${INSEE_FUNCTION_URL}"
+    plu: "${PLU_FUNCTION_URL}"
